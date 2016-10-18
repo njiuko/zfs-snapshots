@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,15 +12,16 @@ import (
 	"time"
 )
 
-var driver zfsDriver
+var driver ZFSDriver
 
 const timeFormat = "2006-01-02-15-04-05"
 
-type zfsDriver interface {
+// The ZFSDriver interface describes a type that can be used to interact with the ZFS file system
+type ZFSDriver interface {
 	CreateSnapshot(name string, label string) error
 	Snapshots(filter string) ([]string, error)
 	DeleteSnapshot(name string) error
-	SendLastSnapshot(filter string, label string, output io.Writer) error
+	SendSnapshots(from, to string, output io.Writer) error
 }
 
 func init() {
@@ -27,7 +29,7 @@ func init() {
 }
 
 // SetDriver sets a specific driver to be used to execute the zfs commands
-func SetDriver(d zfsDriver) {
+func SetDriver(d ZFSDriver) {
 	driver = d
 }
 
@@ -40,10 +42,10 @@ func TakeSnapshot(name string, label string, keep int, send bool, dir string) er
 		return err
 	}
 
-	lbl := fmt.Sprintf("%s-%s", label, time.Now().Format(timeFormat))
+	labelWithTimestamp := fmt.Sprintf("%s-%s", label, time.Now().Format(timeFormat))
 	for _, ss := range oldSnapshots {
-		if strings.HasSuffix(ss, lbl) {
-			return fmt.Errorf("snapshot %s@%s already exists", name, lbl)
+		if strings.HasSuffix(ss, labelWithTimestamp) {
+			return fmt.Errorf("snapshot %s@%s already exists", name, labelWithTimestamp)
 		}
 	}
 
@@ -51,7 +53,7 @@ func TakeSnapshot(name string, label string, keep int, send bool, dir string) er
 		cleanup(oldSnapshots, keep)
 	}
 
-	err = driver.CreateSnapshot(name, lbl)
+	err = driver.CreateSnapshot(name, labelWithTimestamp)
 	if err != nil {
 		return err
 	}
@@ -59,14 +61,24 @@ func TakeSnapshot(name string, label string, keep int, send bool, dir string) er
 	if send {
 		nameWithoutSlashes := strings.Replace(name, "/", "-", -1)
 		// TODO: move snap extension to some constant
-		snapshotFile := fmt.Sprintf("%s-%s.snap", nameWithoutSlashes, lbl)
+		snapshotFile := fmt.Sprintf("%s-%s.snap", nameWithoutSlashes, labelWithTimestamp)
 		f, err := os.Create(path.Join(dir, snapshotFile))
+		if err != nil {
+			return err
+		}
 		defer f.Close()
+
+		snapshots, err := driver.Snapshots(name)
 		if err != nil {
 			return err
 		}
 
-		err = driver.SendLastSnapshot(name, label, f)
+		from, to, err := newest(snapshots, name, label)
+		if err != nil {
+			return err
+		}
+
+		err = driver.SendSnapshots(from, to, f)
 		if err != nil {
 			os.Remove(f.Name())
 			return err
@@ -74,6 +86,28 @@ func TakeSnapshot(name string, label string, keep int, send bool, dir string) er
 		f.Sync()
 	}
 	return nil
+}
+
+func newest(snapshots []string, name, label string) (from string, to string, err error) {
+	var filtered []string
+	prefix := fmt.Sprintf("%s@%s-", name, label)
+	for _, s := range snapshots {
+		if strings.HasPrefix(s, prefix) {
+			filtered = append(filtered, s)
+		}
+	}
+
+	sort.Strings(filtered)
+	switch len(filtered) {
+	case 0:
+		err = errors.New("No snapshots found to send")
+	case 1:
+		to = filtered[0]
+	default:
+		from = filtered[len(filtered)-2]
+		to = filtered[len(filtered)-1]
+	}
+	return from, to, err
 }
 
 func cleanup(snapshots []string, keep int) {

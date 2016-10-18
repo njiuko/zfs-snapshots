@@ -1,13 +1,10 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os/exec"
-	"sort"
-	"strings"
 
 	"github.com/mistifyio/go-zfs"
 )
@@ -70,38 +67,42 @@ func (z GoZFS) DeleteSnapshot(name string) error {
 		return err
 	}
 
-	if ds.Type != zfs.DatasetSnapshot {
-		return fmt.Errorf("Dataset %s is not a snapshot (it's a %s)", ds.Name, ds.Type)
+	if err := assertIsSnapshot(ds); err != nil {
+		return err
 	}
 
 	return ds.Destroy(zfs.DestroyDefault)
 }
 
-// SendLastSnapshot incrementally sends the last snapshot matching a filter string and a label prefix
-func (z GoZFS) SendLastSnapshot(filter string, label string, output io.Writer) error {
-	var snaps []*zfs.Dataset
-	ss, err := zfs.Snapshots(filter)
+// SendSnapshots sends two snapshots incrementally to an io.Writer
+// if the from snapshot is an empty string it just sends the to snapshot non incrementally
+func (z GoZFS) SendSnapshots(from, to string, output io.Writer) error {
+	if from == "" {
+		return sendSnapshot(to, output)
+	}
+
+	log.Println("zfs", "send", "-i", from, to)
+	cmd := exec.Command("zfs", "send", "-i", from, to)
+	cmd.Stdout = output
+	return cmd.Run()
+}
+
+func assertIsSnapshot(ds *zfs.Dataset) error {
+	if ds.Type != zfs.DatasetSnapshot {
+		return fmt.Errorf("Dataset %s is not a snapshot (it's a %s)", ds.Name, ds.Type)
+	}
+	return nil
+}
+
+func sendSnapshot(name string, output io.Writer) error {
+	ds, err := zfs.GetDataset(name)
 	if err != nil {
 		return err
 	}
 
-	nameWithLabel := fmt.Sprintf("%s@%s-", filter, label)
-	for _, s := range ss {
-		if strings.HasPrefix(s.Name, nameWithLabel) {
-			snaps = append(snaps, s)
-		}
+	if err := assertIsSnapshot(ds); err != nil {
+		return err
 	}
 
-	sort.Sort(datasetSlice(snaps))
-	switch len(snaps) {
-	case 0:
-		return errors.New("No snapshots found")
-	case 1:
-		return snaps[0].SendSnapshot(output)
-	}
-
-	fmt.Println("zfs", "send", "-i", snaps[len(snaps)-2].Name, snaps[len(snaps)-1].Name)
-	cmd := exec.Command("zfs", "send", "-i", snaps[len(snaps)-2].Name, snaps[len(snaps)-1].Name)
-	cmd.Stdout = output
-	return cmd.Run()
+	return ds.SendSnapshot(output)
 }
