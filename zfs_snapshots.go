@@ -18,7 +18,7 @@ const timeFormat = "2006-01-02-15-04-05"
 
 // The ZFSDriver interface describes a type that can be used to interact with the ZFS file system
 type ZFSDriver interface {
-	CreateSnapshot(name string, label string) error
+	CreateSnapshots(names []string, label string) error
 	Snapshots(filter string) ([]string, error)
 	DeleteSnapshot(name string) error
 	SendSnapshots(from, to string, output io.Writer) error
@@ -36,16 +36,19 @@ func SetDriver(d ZFSDriver) {
 // TakeSnapshot takes a snapshot from a dataset by its name with a label that's
 // suffixed with the current timestamp in the format `-YYYY-MM-DD-HH-mm`
 // The Keep argument defines how many versions of this snapshot should be kept
-func TakeSnapshot(name string, label string, keep int, send bool, dir string) error {
-	oldSnapshots, err := Snapshots(name)
+func TakeSnapshot(names []string, label string, keep int, send bool, dir string) error {
+	oldSnapshots, err := Snapshots("")
 	if err != nil {
 		return err
 	}
 
 	labelWithTimestamp := fmt.Sprintf("%s-%s", label, time.Now().Format(timeFormat))
-	for _, ss := range oldSnapshots {
-		if strings.HasSuffix(ss, labelWithTimestamp) {
-			return fmt.Errorf("snapshot %s@%s already exists", name, labelWithTimestamp)
+	for _, n := range names {
+		for _, ss := range oldSnapshots {
+			fullName := fmt.Sprintf("%s@%s", n, labelWithTimestamp)
+			if strings.HasSuffix(ss, fullName) {
+				return fmt.Errorf("snapshot %s already exists", fullName)
+			}
 		}
 	}
 
@@ -53,44 +56,66 @@ func TakeSnapshot(name string, label string, keep int, send bool, dir string) er
 		cleanup(oldSnapshots, keep)
 	}
 
-	err = driver.CreateSnapshot(name, labelWithTimestamp)
+	err = driver.CreateSnapshots(names, labelWithTimestamp)
 	if err != nil {
 		return err
 	}
 
 	if send {
+		return sendSnapshots(names, label, labelWithTimestamp, dir)
+	}
+
+	return nil
+}
+
+func sendSnapshots(names []string, label, labelWithTimestamp, dir string) error {
+	var err error
+	var snapshotFiles []string
+	for _, name := range names {
 		nameWithoutSlashes := strings.Replace(name, "/", "-", -1)
-		// TODO: move snap extension to some constant
 		snapshotFile := fmt.Sprintf("%s-%s.snap", nameWithoutSlashes, labelWithTimestamp)
-		f, err := os.Create(path.Join(dir, snapshotFile))
+		var f *os.File
+		f, err = os.Create(path.Join(dir, snapshotFile))
 		if err != nil {
-			return err
+			break
 		}
 		defer f.Close()
+		snapshotFiles = append(snapshotFiles, snapshotFile)
 
-		snapshots, err := driver.Snapshots(name)
+		var snapshots []string
+		snapshots, err = driver.Snapshots(name)
 		if err != nil {
-			return err
+			break
 		}
 
-		from, to, err := newest(snapshots, name, label)
+		var from, to string
+		from, to, err = newest(snapshots, name, label)
 		if err != nil {
-			return err
+			break
 		}
 
 		err = driver.SendSnapshots(from, to, f)
 		if err != nil {
-			os.Remove(f.Name())
-			return err
+			break
 		}
 		f.Sync()
 	}
-	return nil
+
+	if err != nil {
+		log.Printf("error while sending snapshots. Cleaning up: %s", err)
+		for _, file := range snapshotFiles {
+			log.Printf("removing %s", file)
+			os.Remove(file)
+		}
+	}
+
+	return err
 }
 
 func newest(snapshots []string, name, label string) (from string, to string, err error) {
 	var filtered []string
 	prefix := fmt.Sprintf("%s@%s-", name, label)
+	log.Println(prefix, name, label)
 	for _, s := range snapshots {
 		if strings.HasPrefix(s, prefix) {
 			filtered = append(filtered, s)

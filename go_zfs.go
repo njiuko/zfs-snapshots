@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -45,18 +46,22 @@ func (z GoZFS) Snapshots(filter string) ([]string, error) {
 	return snapshots, nil
 }
 
-// CreateSnapshot creates a snapshot with a provided name and label
-func (z GoZFS) CreateSnapshot(name string, label string) error {
-	ds, err := zfs.GetDataset(name)
+// CreateSnapshots creates snapshots from provided names and label
+func (z GoZFS) CreateSnapshots(names []string, label string) error {
+	snapshots := make([]string, 0, len(names))
+	for _, n := range names {
+		snapshots = append(snapshots, fmt.Sprintf("%s@%s", n, label))
+	}
+	args := append([]string{"snapshot"}, snapshots...)
+	cmd := exec.Command("zfs", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
+		fmt.Println(stderr.String())
 		return err
 	}
-
-	ss, err := ds.Snapshot(label, false)
-	if err != nil {
-		return err
-	}
-	log.Printf("created snapshot %s\n", ss.Name)
+	log.Printf("created snapshots %v\n", snapshots)
 	return nil
 }
 

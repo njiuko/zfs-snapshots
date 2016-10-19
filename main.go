@@ -17,22 +17,28 @@ func main() {
 
 	flag.Parse()
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of %s [-label string] [-keep int] command [create|delete|list] name:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s [-label string] [-keep int] command [create|delete|list] name(s):\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	cmd := flag.Arg(0)
-	name := flag.Arg(1)
+	names := flag.Args()[1:]
 
 	switch cmd {
 	case "create":
-		requireName(name)
-		err = TakeSnapshot(name, *label, *keep, *send, *snapshotDir)
+		if len(names) < 1 {
+			flag.Usage()
+			os.Exit(1)
+		}
+		err = TakeSnapshot(names, *label, *keep, *send, *snapshotDir)
 	case "delete":
-		requireName(name)
-		err = DeleteSnapshot(name)
+		if len(names) != 1 {
+			flag.Usage()
+			os.Exit(1)
+		}
+		err = DeleteSnapshot(names[0])
 	case "list":
 		var snapshots []string
-		snapshots, err = Snapshots(name)
+		snapshots, err = Snapshots("")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -46,12 +52,5 @@ func main() {
 
 	if err != nil {
 		log.Fatal(err)
-	}
-}
-
-func requireName(name string) {
-	if name == "" {
-		flag.Usage()
-		os.Exit(1)
 	}
 }
