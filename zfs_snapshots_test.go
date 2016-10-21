@@ -44,8 +44,9 @@ func TestTakeSnapshot(t *testing.T) {
 		{false, 0},
 	}
 
+	vols := []string{"foo"}
 	for _, i := range sendTests {
-		err = TakeSnapshot("foo", "bar", 0, i.send, inboxPath)
+		err = TakeSnapshot(vols, "bar", 0, i.send, inboxPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +62,7 @@ func TestTakeSnapshot(t *testing.T) {
 		driver.reset(files)
 	}
 
-	err = TakeSnapshot("foo", "bar", 0, true, inboxPath)
+	err = TakeSnapshot(vols, "bar", 0, true, inboxPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestTakeSnapshot(t *testing.T) {
 		t.Errorf("TakeSnapshot didn't write the drivers output to the snapshot file")
 	}
 
-	err = TakeSnapshot("doesntexist", "bar", 0, false, inboxPath)
+	err = TakeSnapshot([]string{"doesntexist"}, "bar", 0, false, inboxPath)
 	if err == nil {
 		t.Error("TakeSnapshot didn't fail for a none existing volume")
 	}
@@ -85,7 +86,7 @@ func TestTakeSnapshot(t *testing.T) {
 		"foo@bar-2010-10-21-14-01-35",
 		oldLatest,
 	}
-	err = TakeSnapshot("foo", "bar", 2, false, inboxPath)
+	err = TakeSnapshot(vols, "bar", 2, false, inboxPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,18 +99,20 @@ func TestTakeSnapshot(t *testing.T) {
 
 }
 
-func (b *testBackend) CreateSnapshot(name string, label string) error {
-	var found bool
-	for _, v := range b.volumes {
-		if v == name {
-			found = true
-			break
+func (b *testBackend) CreateSnapshots(names []string, label string) error {
+	for _, name := range names {
+		var found bool
+		for _, v := range b.volumes {
+			if v == name {
+				found = true
+				break
+			}
 		}
+		if !found {
+			return fmt.Errorf("Volume %s not found\n", name)
+		}
+		b.snapshots = append(b.snapshots, fmt.Sprintf("%s@%s", name, label))
 	}
-	if !found {
-		return fmt.Errorf("Volume %s not found\n", name)
-	}
-	b.snapshots = append(b.snapshots, fmt.Sprintf("%s@%s", name, label))
 	return nil
 }
 

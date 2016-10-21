@@ -116,7 +116,6 @@ func sendSnapshots(names []string, label, labelWithTimestamp, dir string) error 
 func newest(snapshots []string, name, label string) (from string, to string, err error) {
 	var filtered []string
 	prefix := fmt.Sprintf("%s@%s-", name, label)
-	log.Println(prefix, name, label)
 	for _, s := range snapshots {
 		if strings.HasPrefix(s, prefix) {
 			filtered = append(filtered, s)
