@@ -36,6 +36,7 @@ func SetDriver(d ZFSDriver) {
 // TakeSnapshot takes a snapshot from a dataset by its name with a label that's
 // suffixed with the current timestamp in the format `-YYYY-MM-DD-HH-mm`
 // The Keep argument defines how many versions of this snapshot should be kept
+// is 0, all versions are kept
 func TakeSnapshot(names []string, label string, keep int, send bool, dir string) error {
 	oldSnapshots, err := Snapshots("")
 	if err != nil {
