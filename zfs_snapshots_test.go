@@ -96,7 +96,20 @@ func TestTakeSnapshot(t *testing.T) {
 	if driver.snapshots[0] != oldLatest {
 		t.Errorf("Didn't keep the right snapshot when cleaning up (kept %s, should have kept %s)", driver.snapshots[0], oldLatest)
 	}
+	driver.reset(nil)
 
+	driver.volumes = []string{"foo", "baz"}
+	err = TakeSnapshot(driver.volumes, "bar", 0, true, inboxPath)
+
+	files, err = filepath.Glob(path.Join(inboxPath, "*.snap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(files) != 2 {
+		t.Errorf("should have created 2 snapshots (each volume) but created %d %#v", len(files), files)
+	}
+	driver.reset(files)
 }
 
 func (b *testBackend) CreateSnapshots(names []string, label string) error {
