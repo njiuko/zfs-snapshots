@@ -44,13 +44,15 @@ func TakeSnapshot(names []string, label string, keep int, send bool, dir string)
 	}
 
 	labelWithTimestamp := fmt.Sprintf("%s-%s", label, time.Now().Format(timeFormat))
+	newSnapshots := []string{}
 	for _, n := range names {
+		fullName := fmt.Sprintf("%s@%s", n, labelWithTimestamp)
 		for _, ss := range oldSnapshots {
-			fullName := fmt.Sprintf("%s@%s", n, labelWithTimestamp)
 			if strings.HasSuffix(ss, fullName) {
 				return fmt.Errorf("snapshot %s already exists", fullName)
 			}
 		}
+		newSnapshots = append(newSnapshots, fullName)
 	}
 
 	if keep != 0 {
@@ -59,11 +61,20 @@ func TakeSnapshot(names []string, label string, keep int, send bool, dir string)
 
 	err = driver.CreateSnapshots(names, labelWithTimestamp)
 	if err != nil {
+		for _, n := range newSnapshots {
+			_ = DeleteSnapshot(n)
+		}
 		return err
 	}
 
 	if send {
-		return sendSnapshots(names, label, labelWithTimestamp, dir)
+		err = sendSnapshots(names, label, labelWithTimestamp, dir)
+		if err != nil {
+			for _, n := range newSnapshots {
+				_ = DeleteSnapshot(n)
+			}
+			return err
+		}
 	}
 
 	return nil

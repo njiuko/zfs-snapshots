@@ -110,6 +110,24 @@ func TestTakeSnapshot(t *testing.T) {
 		t.Errorf("should have created 2 snapshots (each volume) but created %d %#v", len(files), files)
 	}
 	driver.reset(files)
+
+	err = TakeSnapshot([]string{"foo", "doesntexist"}, "bar", 0, true, inboxPath)
+	if err == nil {
+		t.Error("Taking multiple snapshots with a volume that doesnt exist shouldnt succeed but did")
+	}
+	if len(driver.snapshots) != 0 {
+		t.Errorf("didn't remove all newly created snapshots if one of them fails: %#v", driver.snapshots)
+	}
+
+	files, err = filepath.Glob(path.Join(inboxPath, "*.snap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(files) != 0 {
+		t.Errorf("should cleanup all snap files if one snapshot fails, but didn't: %#v", files)
+	}
+	driver.reset(files)
 }
 
 func (b *testBackend) CreateSnapshots(names []string, label string) error {
