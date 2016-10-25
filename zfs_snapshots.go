@@ -82,17 +82,18 @@ func TakeSnapshot(names []string, label string, keep int, send bool, dir string)
 
 func sendSnapshots(names []string, label, labelWithTimestamp, dir string) error {
 	var err error
-	var snapshotFiles []string
+	tmpFiles := make(map[string]string)
 	for _, name := range names {
 		nameWithoutSlashes := strings.Replace(name, "/", "-", -1)
 		snapshotFile := fmt.Sprintf("%s-%s.snap", nameWithoutSlashes, labelWithTimestamp)
+		tmpFile := snapshotFile + ".tmp"
 		var f *os.File
-		f, err = os.Create(path.Join(dir, snapshotFile))
+		f, err = os.Create(path.Join(dir, tmpFile))
 		if err != nil {
 			break
 		}
 		defer f.Close()
-		snapshotFiles = append(snapshotFiles, snapshotFile)
+		tmpFiles[path.Join(dir, tmpFile)] = path.Join(dir, snapshotFile)
 
 		var snapshots []string
 		snapshots, err = driver.Snapshots(name)
@@ -115,9 +116,16 @@ func sendSnapshots(names []string, label, labelWithTimestamp, dir string) error 
 
 	if err != nil {
 		log.Printf("error while sending snapshots. Cleaning up: %s", err)
-		for _, file := range snapshotFiles {
+		for file := range tmpFiles {
 			log.Printf("removing %s", file)
 			os.Remove(file)
+		}
+		return err
+	}
+
+	for tmpFile, snapFile := range tmpFiles {
+		if e := os.Rename(tmpFile, snapFile); e != nil {
+			err = e
 		}
 	}
 
