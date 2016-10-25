@@ -86,14 +86,15 @@ func sendSnapshots(names []string, label, labelWithTimestamp, dir string) error 
 	for _, name := range names {
 		nameWithoutSlashes := strings.Replace(name, "/", "-", -1)
 		snapshotFile := fmt.Sprintf("%s-%s.snap", nameWithoutSlashes, labelWithTimestamp)
+		snapshotFile = path.Join(dir, snapshotFile)
 		tmpFile := snapshotFile + ".tmp"
 		var f *os.File
-		f, err = os.Create(path.Join(dir, tmpFile))
+		f, err = os.Create(tmpFile)
 		if err != nil {
 			break
 		}
 		defer f.Close()
-		tmpFiles[path.Join(dir, tmpFile)] = path.Join(dir, snapshotFile)
+		tmpFiles[tmpFile] = snapshotFile
 
 		var snapshots []string
 		snapshots, err = driver.Snapshots(name)
