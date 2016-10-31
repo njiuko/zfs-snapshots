@@ -55,10 +55,6 @@ func TakeSnapshot(names []string, label string, keep int, send bool, dir string)
 		newSnapshots = append(newSnapshots, fullName)
 	}
 
-	if keep != 0 {
-		cleanup(oldSnapshots, keep)
-	}
-
 	err = driver.CreateSnapshots(names, labelWithTimestamp)
 	if err != nil {
 		for _, n := range newSnapshots {
@@ -75,6 +71,10 @@ func TakeSnapshot(names []string, label string, keep int, send bool, dir string)
 			}
 			return err
 		}
+	}
+
+	if keep != 0 {
+		cleanup(oldSnapshots, keep)
 	}
 
 	return nil
