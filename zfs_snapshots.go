@@ -38,18 +38,22 @@ func SetDriver(d ZFSDriver) {
 // The Keep argument defines how many versions of this snapshot should be kept
 // is 0, all versions are kept
 func TakeSnapshot(names []string, label string, keep int, send bool, dir string) error {
-	oldSnapshots, err := Snapshots("")
+	allSnapshots, err := Snapshots("")
 	if err != nil {
 		return err
 	}
 
 	labelWithTimestamp := fmt.Sprintf("%s-%s", label, time.Now().Format(timeFormat))
+	var oldSnapshots []string
 	newSnapshots := []string{}
 	for _, n := range names {
 		fullName := fmt.Sprintf("%s@%s", n, labelWithTimestamp)
-		for _, ss := range oldSnapshots {
+		for _, ss := range allSnapshots {
 			if strings.HasSuffix(ss, fullName) {
 				return fmt.Errorf("snapshot %s already exists", fullName)
+			}
+			if strings.HasPrefix(ss, fmt.Sprintf("%s@", n)) {
+				oldSnapshots = append(oldSnapshots, ss)
 			}
 		}
 		newSnapshots = append(newSnapshots, fullName)
